@@ -87,6 +87,7 @@ res = subprocess.run(
     ["feast", "apply"],
     cwd=str(FEAST_DIR),
     capture_output=True, text=True, check=False,
+    stdin=subprocess.DEVNULL,
 )
 print("STDOUT:")
 print(res.stdout)
@@ -107,6 +108,7 @@ res = subprocess.run(
     ["feast", "materialize-incremental", end_dt],
     cwd=str(FEAST_DIR),
     capture_output=True, text=True, check=False,
+    stdin=subprocess.DEVNULL,
 )
 print(res.stdout[-1500:])
 if res.stderr:

@@ -36,7 +36,7 @@ proc = subprocess.Popen(
 )
 
 # Đợi server up + warm (Searcher.from_corpus loads embeddings + indexes 1000 docs)
-URL = "http://localhost:8000"
+URL = "http://127.0.0.1:8000"
 for _ in range(60):
     try:
         r = httpx.get(f"{URL}/healthz", timeout=2.0)
@@ -54,13 +54,14 @@ print(httpx.get(f"{URL}/healthz").json())
 # ## 2. Single query — kiểm tra response shape
 
 # %%
-r = httpx.get(f"{URL}/search", params={"q": "cloud computing tự động mở rộng", "mode": "hybrid"})
-r.raise_for_status()
-body = r.json()
-print(f"latency_ms: {body['latency_ms']:.1f}")
-print(f"top-3 hits:")
-for h in body["hits"][:3]:
-    print(f"  {h['doc_id']:>14}  score={h['score']:.4f}  {h['title']}")
+with httpx.Client(base_url=URL, timeout=10.0) as client:
+    r = client.get("/search", params={"q": "cloud computing tự động mở rộng", "mode": "hybrid"})
+    r.raise_for_status()
+    body = r.json()
+    print(f"latency_ms: {body['latency_ms']:.1f}")
+    print(f"top-3 hits:")
+    for h in body["hits"][:3]:
+        print(f"  {h['doc_id']:>14}  score={h['score']:.4f}  {h['title']}")
 
 # %% [markdown]
 # ## 3. TODO — Latency benchmark (100 queries × 3 modes)
@@ -85,13 +86,13 @@ def percentile(values: list[float], p: float) -> float:
     return sorted(values)[min(int(n * p), n - 1)]
 
 
-def benchmark_mode(mode: str, reps: int = 2) -> dict[str, float]:
+def benchmark_mode(client: httpx.Client, mode: str, reps: int = 2) -> dict[str, float]:
     server_latencies: list[float] = []
     wall_latencies: list[float] = []
     for _ in range(reps):
         for q in golden:
             t0 = time.perf_counter()
-            r = httpx.get(f"{URL}/search", params={"q": q["query"], "mode": mode})
+            r = client.get("/search", params={"q": q["query"], "mode": mode})
             wall_latencies.append((time.perf_counter() - t0) * 1000)
             server_latencies.append(r.json()["latency_ms"])
     return {
@@ -102,13 +103,21 @@ def benchmark_mode(mode: str, reps: int = 2) -> dict[str, float]:
     }
 
 
-print(f"  {'mode':10}  {'P50':>7}  {'P95':>7}  {'P99':>7}  {'P99(wall)':>9}")
-results = {}
-for mode in ("keyword", "semantic", "hybrid"):
-    res = benchmark_mode(mode)
-    results[mode] = res
-    print(f"  {mode:10}  {res['p50_server']:>5.1f}ms  {res['p95_server']:>5.1f}ms  "
-          f"{res['p99_server']:>5.1f}ms  {res['p99_wall']:>7.1f}ms")
+with httpx.Client(base_url=URL, timeout=10.0) as client:
+    # Warm-up (10 queries to warm up FastAPI and embedder)
+    for q in golden[:10]:
+        client.get("/search", params={"q": q["query"], "mode": "hybrid"})
+
+    print(f"  {'mode':10}  {'P50':>7}  {'P95':>7}  {'P99':>7}  {'P99(wall)':>9}")
+    results = {}
+    for mode in ("keyword", "semantic", "hybrid"):
+        # Warm up current mode
+        for q in golden[:5]:
+            client.get("/search", params={"q": q["query"], "mode": mode})
+        res = benchmark_mode(client, mode)
+        results[mode] = res
+        print(f"  {mode:10}  {res['p50_server']:>5.1f}ms  {res['p95_server']:>5.1f}ms  "
+              f"{res['p99_server']:>5.1f}ms  {res['p99_wall']:>7.1f}ms")
 
 # %% [markdown]
 # ## 4. Rubric assertion — hybrid P99 server-side < 50ms

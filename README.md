@@ -33,6 +33,19 @@ make benchmark        # Precision@10 + latency table
 make lab              # Jupyter Lab on :8888
 ```
 
+#### Windows (PowerShell) Quick Start:
+```powershell
+uv venv .venv --python python
+uv pip install --python .venv\Scripts\python.exe --overrides overrides-py314.txt -r requirements.txt
+$env:PYTHONUTF8="1"
+.venv\Scripts\python.exe scripts/seed_corpus.py
+.venv\Scripts\python.exe scripts/gen_agent_queries.py
+.venv\Scripts\python.exe scripts/gen_spend.py
+.venv\Scripts\python.exe scripts/verify_lite.py
+.venv\Scripts\python.exe scripts/benchmark.py
+.venv\Scripts\pytest.exe -q
+```
+
 Yêu cầu: **Python 3.10–3.14**. Không cần Docker, không cần GPU, không cần OpenAI key.
 
 > **Python 3.14:** `pyarrow` được nới lên `<26` (bản `<22` không có wheel cho
